@@ -1,0 +1,29 @@
+footer {
+ position: fixed;
+ width: 100%;
+ bottom: 30;
+}
+canvas { /* Center the canvas */
+  margin:auto; 
+  /*border: 1px solid black;*/
+}
+
+* {margin: 0; padding: 0;}
+body {
+	background: hsl(120, 40%, 60%);
+	padding-top: 20px;
+	font: normal 18px Sniglet; color: white; text-align: center;
+}
+
+/*general styles*/
+h1 {font-weight: normal; font-size: 36px; margin-bottom: 25px;}
+.fun-cube i {transform: scale(10); opacity: 0.1;}
+
+.loader {
+	background: hsl(120, 40%, 30%);
+	animation: phase 1s infinite;
+}
+/*Lets create a pulsating animation for the loader face*/
+@keyframes phase {
+	50% {background: hsl(120, 70%, 30%);}
+}
