@@ -39,11 +39,15 @@ var WATER_SIZE = 64;
 
 var JUICE_START = 100;
 var JUICE_ADD = 0.01;
+var JUICE_SHARE = 0.005;
 
 var UI_ARROW_SCALE = 1.5;
 
+var WON = false;
+
 var other_players = {};
 
+var global;
 var socket;
 var graphics;
 var graphics_ui;
@@ -103,28 +107,45 @@ var player = {
         var col = this.collisions[index];
         if ( col.type == "Water" )
         {
-          // Track all the way down that root and keep them alive
+          this.dontdecay( col );
+
           // Add juice to player (clamped)
-          var ind = col.index;
-          var root = this.points[ind].lngth;
-          while ( root > 0 )
-          {
-            this.points[ind].life = Math.min( this.points[ind].life + 1, ROOT_DECAYLIFE );
-            
-            if ( this.points[ind].last === undefined )
-            {
-              break;
-            }
-            ind = this.points[ind].last;
-            root = this.points[ind].lngth;
-          }
           this.juice = Math.min( this.juice + JUICE_ADD, JUICE_START );
         }
         else
         {
+          this.dontdecay( col );
+
           // Then type is player id
           // Add juice to player (clamped)
+          if ( false )
+          {
+            this.juice = Math.max( 0, this.juice - JUICE_SHARE );
+
+            socket.emit("send-juice", {
+              id: socket.id,
+              player: col.type,
+              juice: JUICE_SHARE,
+            })
+          }
         }
+      }
+    },
+    dontdecay: function( col )
+    {
+      // Track all the way down that root and keep them alive
+      var ind = col.index;
+      var root = this.points[ind].lngth;
+      while ( root > 0 )
+      {
+        this.points[ind].life = Math.min( this.points[ind].life + 1, ROOT_DECAYLIFE );
+
+        if ( this.points[ind].last === undefined )
+        {
+          break;
+        }
+        ind = this.points[ind].last;
+        root = this.points[ind].lngth;
       }
     },
     decay: function(time, delta)
@@ -246,6 +267,7 @@ var player = {
               finishx: pos.x,
               finishy: pos.y,
               lngth: line.lngth,
+              index: this.points.length - 1,
               colour: this.colour,
             })
 
@@ -284,6 +306,7 @@ var player = {
 
 function preload()
 {
+    global = this;
     this.cameras.main.setBackgroundColor(COLOUR_BACKGROUND);
     this.load.image('circle_cutout', ASSET_CIRCLE_CUTOUT);
     this.load.image('circle_arrow', ASSET_CIRCLE_ARROW);
@@ -354,17 +377,47 @@ function net_receive()
         // Only update other players..
         if ( data.id != socket.id )
         {
-          // TODO store line data here instead
-          //other_players[data.id].lines.push( data );
+          other_players[data.id].lines.push( data );
           DrawLine( graphics, data.startx, data.starty, data.finishx, data.finishy, ROOT_MAXRANGE - data.lngth * ROOT_GROWTHIN, data.colour);
         }
+    })
+
+    socket.on('update-juice', function(data)
+    {
+        // Only update other players..
+        if ( data.id != socket.id && socket.id == data.player )
+        {
+          player.juice = Math.min( player.juice + data.juice, JUICE_START );
+        }
+    })
+
+    socket.on('update-dontdecay', function(data)
+    {
+        // Only update other players..
+        if ( socket.id == data.ply )
+        {
+          player.collisions.push({type: data.ply, index: data.index});
+        }
+    })
+  
+    socket.on('win', function(data)
+    {
+      if ( !WON )
+      {
+        WON = true;
+
+        var text1 = global.add.text(WINDOW_WIDTH / 2 - 66, 8, 'GREW TOGETHER!');
+      }
     })
 }
 
 var delay = 0;
 function update(time, delta)
 {
-  player.update(time, delta);
+  if ( !WON )
+  {
+    player.update(time, delta);
+  };
 
   render(time, delta);
 }
@@ -448,12 +501,44 @@ function CheckCollisions( a, b )
   }
 
   // Other player roots
-  // TODO
+  for (const key in other_players)
+  {
+    if ( key != undefined )
+    {
+      var ply = other_players[key];
+      if ( ply.lines != undefined && ply.lines.length > 0 )
+      {
+        for (var index = 0; index < ply.lines.length; ++index)
+        {
+          var line = ply.lines[index];
+          var start = {x: line.startx, y: line.starty};
+          var finish = {x: line.finishx, y: line.finishy};
+          if ( CheckCollision( a, b, start, finish ) )
+          {
+            var added = AddCollision({type: ply, index: player.points.length - 1});
+            
+            if ( added )
+            {
+              // Tell the other player not to decay this root
+              console.log( line );
+              socket.emit("send-dontdecay", {
+                id: socket.id,
+                ply: key,
+                index: line.index,
+              })
+            }
+            
+            return true;
+          }
+        }
+      }
+    }
+  }
 
   // Water
   if ( CheckCircleCollision( a, b, water.circle, WATER_SIZE ) )
   {
-    player.collisions.push({type: "Water", index: player.points.length - 1});
+    AddCollision( {type: "Water", index: player.points.length - 1} );
     return true;
   }
 
@@ -500,6 +585,25 @@ function CheckCircleCollision(A, B, C, radius)
               (B.x - C.x) ** 2 + (B.y - C.y) ** 2;
     }
     return dist < radius * radius;
+}
+
+function AddCollision( col )
+{
+  var found = false;
+    for (var index = 0; index < player.collisions.length; ++index)
+    {
+      var other = player.collisions[index];
+      if ( col.type == other.type && col.index == other.index )
+      {
+        found = true;
+      }
+    }
+  if ( !found )
+  {
+    player.collisions.push( col );
+    return true;
+  }
+  return false;
 }
 
 function NewPlayer(data)
