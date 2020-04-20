@@ -1,6 +1,9 @@
 // Assets
 var ASSET_CIRCLE_CUTOUT = "https://cdn.glitch.com/91cbd087-948f-4774-b428-573af5412e28%2Fcircle_cutout.png?v=1587302526665";
 var ASSET_CIRCLE_ARROW  = "https://cdn.glitch.com/91cbd087-948f-4774-b428-573af5412e28%2Fcircle_arrow.png?v=1587325986138";
+var ASSET_SOUND_WIN = "https://cdn.glitch.com/91cbd087-948f-4774-b428-573af5412e28%2Fwin.wav?v=1587343133240";
+var ASSET_SOUND_GROW = "https://cdn.glitch.com/91cbd087-948f-4774-b428-573af5412e28%2Fgrow.wav?v=1587343751122";
+var ASSET_SOUND_DECAY = "https://cdn.glitch.com/91cbd087-948f-4774-b428-573af5412e28%2Fdecay.wav?v=1587344012574";
 
 var WINDOW_WIDTH = 512;
 var WINDOW_HEIGHT = 512 + 128;
@@ -60,6 +63,7 @@ var config = {
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
     backgroundColor: '#00ff00',
+    parent: "PhaserDIV",
     scene: {
       preload: preload,
       create: create,
@@ -72,6 +76,7 @@ var water = {
     circle: new Phaser.Geom.Circle( GAME_SIZE / 2, GAME_SIZE / 2, WATER_SIZE ),
 }
 
+var sound_nextgrow = 0;
 var player = {
     lines: {},
     circle: new Phaser.Geom.Circle( 0, 0, PLANT_DIAM ),
@@ -270,6 +275,11 @@ var player = {
               index: this.points.length - 1,
               colour: this.colour,
             })
+            if ( sound_nextgrow <= time )
+            {
+              this.sound_grow.play();
+              sound_nextgrow = time + 600
+            }
 
             this.lastpos = this.points[this.points.length - 1];
             this.heldnumdrawn++;
@@ -286,6 +296,11 @@ var player = {
         this.direction.x = 0;
         this.direction.y = 0;
         this.heldnumdrawn = 0;
+        
+        if ( this.sound_grow != undefined )
+        {
+          this.sound_grow.stop();
+        }
 
         // Show gui helper next to closest
         var pos = new Phaser.Math.Vector2( pointer.worldX, pointer.worldY );
@@ -301,6 +316,11 @@ var player = {
     onDecay: function()
     {
       this.juice += ROOT_GROWCOST;
+      
+      //if ( !this.sound_decay.isPlaying )
+      {
+        this.sound_decay.play();
+      }
     },
 };
 
@@ -308,8 +328,13 @@ function preload()
 {
     global = this;
     this.cameras.main.setBackgroundColor(COLOUR_BACKGROUND);
+
     this.load.image('circle_cutout', ASSET_CIRCLE_CUTOUT);
     this.load.image('circle_arrow', ASSET_CIRCLE_ARROW);
+
+    this.load.audio('win',ASSET_SOUND_WIN);
+    this.load.audio('grow',ASSET_SOUND_GROW);
+    this.load.audio('decay',ASSET_SOUND_DECAY);
 }
 
 function create()
@@ -335,6 +360,8 @@ function create()
     player.arrow = this.add.image( PLANT_DIAM * 2, PLANT_DIAM * 2, 'circle_arrow');
     player.colour = COLOURS[Math.floor( Math.random() * COLOURS.length )];
     player.points.push( { x: player.circle.x, y: player.circle.y, lngth: 0 } );
+    player.sound_grow = this.sound.add('grow');
+    player.sound_decay = this.sound.add('decay');
     DrawCircle( player.circle, player.colour );
 
     // Connect
@@ -407,6 +434,7 @@ function net_receive()
         WON = true;
 
         var text1 = global.add.text(WINDOW_WIDTH / 2 - 66, 8, 'GREW TOGETHER!');
+        game.sound.play('win');
       }
     })
 }
